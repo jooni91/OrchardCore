@@ -238,12 +238,11 @@ namespace OrchardCore.Autoroute.Handlers
 
             // Build the entries for this content item to evaluate for duplicates.
             var entries = new List<AutorouteEntry>();
-            await PopulateContainedContentItemRoutesAsync(entries, part.ContentItem.ContentItemId, containedAspect, (JsonObject)contentItem.Content, part.Path);
-
-            await ValidateContainedContentItemRoutesAsync(entries, part.ContentItem.ContentItemId, containedAspect, (JsonObject)contentItem.Content, part.Path);
+            await PopulateContainedContentItemRoutesAsync(entries, part.ContentItem.ContentItemId, containedAspect, (JsonObject)contentItem.Content, part.Path, part.Disabled);
+            await ValidateContainedContentItemRoutesAsync(entries, containedAspect, (JsonObject)contentItem.Content, part.Path);
         }
 
-        private async Task PopulateContainedContentItemRoutesAsync(List<AutorouteEntry> entries, string containerContentItemId, ContainedContentItemsAspect containedContentItemsAspect, JsonObject content, string basePath)
+        private async Task PopulateContainedContentItemRoutesAsync(List<AutorouteEntry> entries, string containerContentItemId, ContainedContentItemsAspect containedContentItemsAspect, JsonObject content, string basePath, bool baseRoutingDisabled)
         {
             foreach (var accessor in containedContentItemsAspect.Accessors)
             {
@@ -254,9 +253,17 @@ namespace OrchardCore.Autoroute.Handlers
                     var contentItem = jItem.ToObject<ContentItem>();
                     var handlerAspect = await _contentManager.PopulateAspectAsync<RouteHandlerAspect>(contentItem);
 
+                    if (baseRoutingDisabled && !handlerAspect.Absolute)
+                    {
+                        return;
+                    }
+
+                    var path = string.Empty;
+
                     if (!handlerAspect.Disabled)
                     {
-                        var path = handlerAspect.Path;
+                        path = handlerAspect.Path;
+
                         if (!handlerAspect.Absolute)
                         {
                             path = (basePath.EndsWith('/') ? basePath : basePath + '/') + handlerAspect.Path.TrimStart('/');
@@ -268,14 +275,14 @@ namespace OrchardCore.Autoroute.Handlers
                         });
                     }
 
-                    var itemBasePath = (basePath.EndsWith('/') ? basePath : basePath + '/') + handlerAspect.Path.TrimStart('/');
+                    var itemBasePath = path.TrimStart('/');
                     var childrenAspect = await _contentManager.PopulateAspectAsync<ContainedContentItemsAspect>(contentItem);
-                    await PopulateContainedContentItemRoutesAsync(entries, containerContentItemId, childrenAspect, jItem, itemBasePath);
+                    await PopulateContainedContentItemRoutesAsync(entries, containerContentItemId, childrenAspect, jItem, itemBasePath, handlerAspect.Disabled);
                 }
             }
         }
 
-        private async Task ValidateContainedContentItemRoutesAsync(List<AutorouteEntry> entries, string containerContentItemId, ContainedContentItemsAspect containedContentItemsAspect, JsonObject content, string basePath)
+        private async Task ValidateContainedContentItemRoutesAsync(List<AutorouteEntry> entries, ContainedContentItemsAspect containedContentItemsAspect, JsonObject content, string basePath)
         {
             foreach (var accessor in containedContentItemsAspect.Accessors)
             {
@@ -329,7 +336,7 @@ namespace OrchardCore.Autoroute.Handlers
 
                         var containedItemBasePath = (basePath.EndsWith('/') ? basePath : basePath + '/') + path;
                         var childItemAspect = await _contentManager.PopulateAspectAsync<ContainedContentItemsAspect>(contentItem);
-                        await ValidateContainedContentItemRoutesAsync(entries, containerContentItemId, childItemAspect, jItem, containedItemBasePath);
+                        await ValidateContainedContentItemRoutesAsync(entries, childItemAspect, jItem, containedItemBasePath);
                     }
                 }
             }

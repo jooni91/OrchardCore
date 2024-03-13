@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
@@ -151,13 +152,13 @@ namespace OrchardCore.Autoroute.Core.Indexes
 
                     var containedContentItemsAspect = await _contentManager.PopulateAspectAsync<ContainedContentItemsAspect>(contentItem);
 
-                    await PopulateContainedContentItemIndexesAsync(results, contentItem, containedContentItemsAspect, (JsonObject)contentItem.Content, part.Path);
+                    await PopulateContainedContentItemIndexesAsync(results, contentItem, containedContentItemsAspect, (JsonObject)contentItem.Content, part.Path, false);
 
                     return results;
                 });
         }
 
-        private async Task PopulateContainedContentItemIndexesAsync(List<AutoroutePartIndex> results, ContentItem containerContentItem, ContainedContentItemsAspect containedContentItemsAspect, JsonObject content, string basePath)
+        private async Task PopulateContainedContentItemIndexesAsync(List<AutoroutePartIndex> results, ContentItem containerContentItem, ContainedContentItemsAspect containedContentItemsAspect, JsonObject content, string basePath, bool baseRoutingDisabled)
         {
             foreach (var accessor in containedContentItemsAspect.Accessors)
             {
@@ -168,9 +169,17 @@ namespace OrchardCore.Autoroute.Core.Indexes
                     var contentItem = jItem.ToObject<ContentItem>();
                     var handlerAspect = await _contentManager.PopulateAspectAsync<RouteHandlerAspect>(contentItem);
 
+                    if (baseRoutingDisabled && !handlerAspect.Absolute)
+                    {
+                        return;
+                    }
+
+                    var path = string.Empty;
+
                     if (!handlerAspect.Disabled)
                     {
-                        var path = handlerAspect.Path;
+                        path = handlerAspect.Path;
+
                         if (!handlerAspect.Absolute)
                         {
                             path = (basePath.EndsWith('/') ? basePath : basePath + '/') + handlerAspect.Path.TrimStart('/');
@@ -187,10 +196,10 @@ namespace OrchardCore.Autoroute.Core.Indexes
                         });
                     }
 
-                    var itemBasePath = (basePath.EndsWith('/') ? basePath : basePath + '/') + handlerAspect.Path.TrimStart('/');
+                    var itemBasePath = path.TrimStart('/');
                     var childrenAspect = await _contentManager.PopulateAspectAsync<ContainedContentItemsAspect>(contentItem);
 
-                    await PopulateContainedContentItemIndexesAsync(results, containerContentItem, childrenAspect, jItem, itemBasePath);
+                    await PopulateContainedContentItemIndexesAsync(results, containerContentItem, childrenAspect, jItem, itemBasePath, handlerAspect.Disabled);
                 }
             }
         }
